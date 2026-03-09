@@ -4,6 +4,8 @@ metadata:
   name: x-bot-config
   namespace: x-bot
 data:
+  BOT_MODE: "post"
+
   # LLM provider: "openai", "anthropic", or "grok"
   LLM_PROVIDER: "openai"
   # Model override (optional — defaults are set per provider)
@@ -28,7 +30,9 @@ data:
   MIN_RETWEETS: "10"
   MAX_REPLIES_PER_RUN: "3"
 
+  MOCK_MODE: "false"
+
   # Set to "true" to log replies without posting them
-  DRY_RUN: "true"
+  DRY_RUN: "false"
 
   DB_PATH: "/data/replied_tweets.db"

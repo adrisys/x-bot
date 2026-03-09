@@ -37,17 +37,17 @@ class XClient:
             wait_on_rate_limit=True,
         )
 
+    def _build_search_query(self, query: str) -> str:
+        exclusions = f"-from:{self._config.own_handle} -is:retweet -is:reply"
+        full_query = (
+            f"(({query}) {exclusions} lang:en) OR "
+            f"(({query}) {exclusions} lang:es)"
+        )
+        return full_query[:512] if len(full_query) > 512 else full_query
+
     def search_viral_tweets(self, query: str, max_results: int = 50) -> list[Tweet]:
         """Search recent posts matching query and return those above thresholds."""
-        full_query = (
-            f"({query}) "
-            f"-from:{self._config.own_handle} "
-            f"-is:retweet -is:reply "
-            f"lang:en OR lang:es"
-        )
-
-        if len(full_query) > 512:
-            full_query = full_query[:512]
+        full_query = self._build_search_query(query)
 
         try:
             response = self._reader.search_recent_tweets(
