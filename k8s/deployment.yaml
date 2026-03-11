@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: x-bot
+  namespace: x-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: x-bot
+  template:
+    metadata:
+      labels:
+        app: x-bot
+    spec:
+      containers:
+        - name: x-bot
+          image: adriannavarro/x-bot:latest
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: x-bot-secrets
+            - configMapRef:
+                name: x-bot-config
+          livenessProbe:
+            exec:
+              command: ["cat", "/tmp/x-bot-alive"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

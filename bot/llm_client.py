@@ -3,25 +3,12 @@
 import logging
 
 from bot.config import Config
-from bot.x_client import Tweet
 
 logger = logging.getLogger(__name__)
 
 
-def _build_user_prompt(tweet: Tweet) -> str:
-    return (
-        f"Reply to this tweet by @{tweet.author_username}:\n\n"
-        f'"{tweet.text}"\n\n'
-        f"Engagement: {tweet.likes} likes, {tweet.retweets} retweets.\n"
-        f"Language: {tweet.lang or 'unknown'}.\n\n"
-        f"Write a single reply tweet (max 280 chars). "
-        f"Reply in the same language as the original tweet. "
-        f"Only output the reply text, nothing else."
-    )
-
-
 class LLMClient:
-    """Unified interface for generating tweet replies via different LLM providers."""
+    """Unified interface for generating text via different LLM providers."""
 
     def __init__(self, config: Config) -> None:
         self._config = config
@@ -42,37 +29,30 @@ class LLMClient:
         else:
             raise ValueError(f"Unknown LLM provider: {self._provider}")
 
-    def generate_reply(self, tweet: Tweet) -> str | None:
-        """Generate a reply for the given tweet. Returns the reply text or None."""
-        user_prompt = _build_user_prompt(tweet)
-
+    def generate(self, prompt: str) -> str | None:
+        """Generate text from the given prompt. Returns the text or None."""
         try:
             if self._provider in ("openai", "grok"):
-                return self._generate_openai(user_prompt)
+                response = self._openai.chat.completions.create(
+                    model=self._config.llm_model,
+                    messages=[
+                        {"role": "system", "content": self._config.persona},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=180,
+                    temperature=0.9,
+                )
+                return response.choices[0].message.content.strip()
+
             elif self._provider == "anthropic":
-                return self._generate_anthropic(user_prompt)
+                response = self._anthropic.messages.create(
+                    model=self._config.llm_model,
+                    system=self._config.persona,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=180,
+                    temperature=0.9,
+                )
+                return response.content[0].text.strip()
         except Exception:
-            logger.exception("LLM generation failed for tweet %s", tweet.id)
+            logger.exception("LLM generation failed")
             return None
-
-    def _generate_openai(self, user_prompt: str) -> str:
-        response = self._openai.chat.completions.create(
-            model=self._config.llm_model,
-            messages=[
-                {"role": "system", "content": self._config.persona},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=100,
-            temperature=0.9,
-        )
-        return response.choices[0].message.content.strip()
-
-    def _generate_anthropic(self, user_prompt: str) -> str:
-        response = self._anthropic.messages.create(
-            model=self._config.llm_model,
-            system=self._config.persona,
-            messages=[{"role": "user", "content": user_prompt}],
-            max_tokens=100,
-            temperature=0.9,
-        )
-        return response.content[0].text.strip()
