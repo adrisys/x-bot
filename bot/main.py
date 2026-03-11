@@ -112,8 +112,9 @@ def run() -> None:
                 else:
                     logger.exception("All attempts failed, giving up for this cycle")
 
-        logger.info("Sleeping %d hours until next post", config.post_interval_hours)
-        _shutdown.wait(timeout=interval_sec)
+        jittered = interval_sec * random.uniform(0.85, 1.15)
+        logger.info("Sleeping %.1f hours until next post", jittered / 3600)
+        _shutdown.wait(timeout=jittered)
 
     _HEARTBEAT.unlink(missing_ok=True)
     logger.info("Shutdown complete.")
