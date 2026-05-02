@@ -23,6 +23,13 @@ class Config:
     post_interval_hours: int
     dry_run: bool
 
+    # Trend discovery (free sources: Reddit / HN / CoinGecko)
+    use_trends: bool
+    trend_subreddits: list[str]
+    trend_include_hn: bool
+    trend_include_crypto: bool
+    trend_min_score: int
+
 
 def _parse_list(raw: str) -> list[str]:
     """Parse a comma-separated string into a list."""
@@ -50,6 +57,10 @@ _DEFAULT_MODELS = {
     "grok": "grok-3-latest",
 }
 
+_DEFAULT_TREND_SUBREDDITS = (
+    "CryptoCurrency,Bitcoin,cardano,argentina,espana,Austrian_Economics"
+)
+
 
 def load_config() -> Config:
     provider = os.environ.get("LLM_PROVIDER", "openai").lower()
@@ -70,4 +81,12 @@ def load_config() -> Config:
         persona=os.environ.get("PERSONA", _DEFAULT_PERSONA),
         post_interval_hours=int(os.environ.get("POST_INTERVAL_HOURS", "24")),
         dry_run=os.environ.get("DRY_RUN", "false").lower() == "true",
+        # Trends
+        use_trends=os.environ.get("USE_TRENDS", "false").lower() == "true",
+        trend_subreddits=_parse_list(
+            os.environ.get("TREND_SUBREDDITS", _DEFAULT_TREND_SUBREDDITS)
+        ),
+        trend_include_hn=os.environ.get("TREND_INCLUDE_HN", "true").lower() == "true",
+        trend_include_crypto=os.environ.get("TREND_INCLUDE_CRYPTO", "true").lower() == "true",
+        trend_min_score=int(os.environ.get("TREND_MIN_SCORE", "50")),
     )

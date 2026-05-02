@@ -8,6 +8,7 @@ from pathlib import Path
 
 from bot.config import load_config
 from bot.llm_client import LLMClient
+from bot.trends import Trend, gather_trends, pick_trend
 from bot.x_client import XClient
 
 logging.basicConfig(
@@ -32,21 +33,31 @@ def _touch_heartbeat() -> None:
     _HEARTBEAT.touch()
 
 
-def _build_prompt(topic: str) -> str:
+def _build_prompt(topic: str, trend: Trend | None = None) -> str:
+    if trend is not None:
+        subject = (
+            f"this trending item from {trend.source}: \"{trend.title}\"\n"
+            f"Write a sharp take that reacts to it specifically — not generic commentary."
+        )
+    else:
+        subject = f"the topic: {topic}"
+
     return (
-        f"Write an original tweet about: {topic}\n\n"
+        f"Write an original tweet about {subject}\n\n"
         f"It should be a sharp, standalone take — the kind that gets quoted and shared. "
         f"Max 280 characters. Only output the tweet text, nothing else. "
         f"No hashtags unless absolutely natural. No emojis unless truly fitting. "
-        f"Choose one language for the entire tweet — Spanish if the topic is Spanish-language, "
+        f"Choose one language for the entire tweet — Spanish if the subject is Spanish-language, "
         f"otherwise English. Never mix languages in the same tweet."
     )
 
 
-def _generate_tweet(llm: LLMClient, topic: str) -> str | None:
+def _generate_tweet(
+    llm: LLMClient, topic: str, trend: Trend | None = None
+) -> str | None:
     """Generate a tweet, retrying once if it exceeds 280 characters."""
     for attempt in range(_MAX_ATTEMPTS):
-        text = llm.generate(_build_prompt(topic))
+        text = llm.generate(_build_prompt(topic, trend))
         if not text:
             return None
         if len(text) <= 280:
@@ -59,12 +70,41 @@ def _generate_tweet(llm: LLMClient, topic: str) -> str | None:
     return None
 
 
-def _post_cycle(config, x_client: XClient, llm: LLMClient) -> None:
-    """Pick a topic, generate a tweet, and post it. Raises on failure."""
-    topic = random.choice(config.topics)
-    logger.info("Generating tweet on topic: %s", topic)
+def _select_trend(config) -> Trend | None:
+    """Pull trends from configured sources and pick one. Best-effort."""
+    try:
+        trends = gather_trends(
+            subreddits=config.trend_subreddits,
+            include_hn=config.trend_include_hn,
+            include_crypto=config.trend_include_crypto,
+        )
+    except Exception:
+        logger.exception("Trend gathering failed, falling back to static topics")
+        return None
 
-    tweet_text = _generate_tweet(llm, topic)
+    trend = pick_trend(trends, min_score=config.trend_min_score)
+    if trend is None:
+        logger.info("No trends met min_score=%d, falling back", config.trend_min_score)
+        return None
+
+    logger.info(
+        "Selected trend: %s (source=%s, score=%d)",
+        trend.title, trend.source, trend.score,
+    )
+    return trend
+
+
+def _post_cycle(config, x_client: XClient, llm: LLMClient) -> None:
+    """Pick a topic (or trend), generate a tweet, and post it. Raises on failure."""
+    trend = _select_trend(config) if config.use_trends else None
+    topic = random.choice(config.topics)
+
+    if trend is not None:
+        logger.info("Generating tweet from trend: %s", trend.title)
+    else:
+        logger.info("Generating tweet on topic: %s", topic)
+
+    tweet_text = _generate_tweet(llm, topic, trend)
     if not tweet_text:
         raise RuntimeError("No tweet generated")
 

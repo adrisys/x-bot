@@ -50,3 +50,49 @@ class LoadConfigTests(unittest.TestCase):
     @patch.dict(os.environ, {**_REQUIRED_ENV, "LLM_PROVIDER": "anthropic"}, clear=True)
     def test_anthropic_default_model(self) -> None:
         assert load_config().llm_model == "claude-sonnet-4-20250514"
+
+
+class TrendConfigTests(unittest.TestCase):
+    @patch.dict(os.environ, _REQUIRED_ENV, clear=True)
+    def test_trend_defaults(self) -> None:
+        config = load_config()
+        assert config.use_trends is False
+        assert config.trend_include_hn is True
+        assert config.trend_include_crypto is True
+        assert config.trend_min_score == 50
+        assert "Bitcoin" in config.trend_subreddits
+        assert "argentina" in config.trend_subreddits
+
+    @patch.dict(os.environ, {**_REQUIRED_ENV, "USE_TRENDS": "true"}, clear=True)
+    def test_use_trends_enabled(self) -> None:
+        assert load_config().use_trends is True
+
+    @patch.dict(os.environ, {**_REQUIRED_ENV, "USE_TRENDS": "TRUE"}, clear=True)
+    def test_use_trends_case_insensitive(self) -> None:
+        assert load_config().use_trends is True
+
+    @patch.dict(
+        os.environ,
+        {**_REQUIRED_ENV, "TREND_SUBREDDITS": "rust, golang , python"},
+        clear=True,
+    )
+    def test_trend_subreddits_override(self) -> None:
+        assert load_config().trend_subreddits == ["rust", "golang", "python"]
+
+    @patch.dict(os.environ, {**_REQUIRED_ENV, "TREND_MIN_SCORE": "250"}, clear=True)
+    def test_trend_min_score_override(self) -> None:
+        assert load_config().trend_min_score == 250
+
+    @patch.dict(
+        os.environ,
+        {
+            **_REQUIRED_ENV,
+            "TREND_INCLUDE_HN": "false",
+            "TREND_INCLUDE_CRYPTO": "false",
+        },
+        clear=True,
+    )
+    def test_trend_source_toggles_off(self) -> None:
+        config = load_config()
+        assert config.trend_include_hn is False
+        assert config.trend_include_crypto is False

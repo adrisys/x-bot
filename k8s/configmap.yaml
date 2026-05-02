@@ -9,7 +9,8 @@ data:
   # Model override (optional — defaults are set per provider)
   # LLM_MODEL: "gpt-4o"
 
-  POST_INTERVAL_HOURS: "24"
+  # 4 tweets/day (every ~6h with ±15% jitter)
+  POST_INTERVAL_HOURS: "6"
 
   TOPICS: >-
     bitcoin,BTC,cardano,ADA,Charles Hoskinson,crypto,DeFi,web3,
@@ -26,3 +27,12 @@ data:
 
   # Set to "true" to log tweets without posting them
   DRY_RUN: "false"
+
+  # Trend-driven posting (free sources: Reddit / HN / CoinGecko, no API keys)
+  USE_TRENDS: "true"
+  TREND_SUBREDDITS: "CryptoCurrency,Bitcoin,cardano,argentina,espana,Austrian_Economics"
+  TREND_INCLUDE_HN: "true"
+  TREND_INCLUDE_CRYPTO: "true"
+  # Minimum score (Reddit upvotes / HN points / CoinGecko derived score) to qualify;
+  # if nothing qualifies the bot falls back to the static TOPICS list.
+  TREND_MIN_SCORE: "50"
