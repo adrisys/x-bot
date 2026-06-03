@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # descriptive, unique UA in the form `platform:appid:version (by /u/username)`.
 # Override REDDIT_USER_AGENT in the environment to set the real account handle.
 _USER_AGENT = os.environ.get(
-    "REDDIT_USER_AGENT", "python:com.adrilab.x-bot:1.1 (by /u/adrilab)"
+    "REDDIT_USER_AGENT", "python:com.adrilab.x-bot:1.1 (by /u/x-bot)"
 )
 _TIMEOUT_SEC = 10
 
