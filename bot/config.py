@@ -23,9 +23,9 @@ class Config:
     post_interval_hours: int
     dry_run: bool
 
-    # Trend discovery (free sources: Reddit / HN / CoinGecko)
+    # Trend discovery (free sources: RSS / HN / CoinGecko)
     use_trends: bool
-    trend_subreddits: list[str]
+    trend_rss_feeds: list[tuple[str, str]]
     trend_include_hn: bool
     trend_include_crypto: bool
     trend_min_score: int
@@ -34,6 +34,25 @@ class Config:
 def _parse_list(raw: str) -> list[str]:
     """Parse a comma-separated string into a list."""
     return [t.strip() for t in raw.split(",") if t.strip()]
+
+
+def _parse_feeds(raw: str) -> list[tuple[str, str]]:
+    """Parse comma-separated ``label|url`` pairs into (label, url) tuples.
+
+    Entries without a ``|`` separator are skipped. URLs must not contain commas
+    (the entry separator); Google News query URLs use ``+``/``%20``, so this is
+    safe for the default lineup.
+    """
+    feeds: list[tuple[str, str]] = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if "|" not in entry:
+            continue
+        label, url = entry.split("|", 1)
+        label, url = label.strip(), url.strip()
+        if label and url:
+            feeds.append((label, url))
+    return feeds
 
 
 _DEFAULT_PERSONA = (
@@ -59,8 +78,15 @@ _DEFAULT_MODELS = {
     "grok": "grok-3-latest",
 }
 
-_DEFAULT_TREND_SUBREDDITS = (
-    "CryptoCurrency,Bitcoin,cardano,argentina,espana,Austrian_Economics"
+# Default RSS lineup as ``label|url`` pairs. Google News search feeds cover the
+# Spanish-language angles (Milei/Argentina, España) that Reddit previously
+# supplied; Mises and Cointelegraph cover Austrian economics and crypto. Each
+# becomes its own source family in pick_trend, so airtime stays balanced.
+_DEFAULT_TREND_RSS_FEEDS = (
+    "google-news-ar|https://news.google.com/rss/search?q=Milei&hl=es-419&gl=AR&ceid=AR:es-419,"
+    "google-news-es|https://news.google.com/rss/search?q=Espa%C3%B1a&hl=es&gl=ES&ceid=ES:es,"
+    "mises|https://mises.org/rss.xml,"
+    "cointelegraph|https://cointelegraph.com/rss"
 )
 
 
@@ -85,8 +111,8 @@ def load_config() -> Config:
         dry_run=os.environ.get("DRY_RUN", "false").lower() == "true",
         # Trends
         use_trends=os.environ.get("USE_TRENDS", "false").lower() == "true",
-        trend_subreddits=_parse_list(
-            os.environ.get("TREND_SUBREDDITS", _DEFAULT_TREND_SUBREDDITS)
+        trend_rss_feeds=_parse_feeds(
+            os.environ.get("TREND_RSS_FEEDS", _DEFAULT_TREND_RSS_FEEDS)
         ),
         trend_include_hn=os.environ.get("TREND_INCLUDE_HN", "true").lower() == "true",
         trend_include_crypto=os.environ.get("TREND_INCLUDE_CRYPTO", "true").lower() == "true",

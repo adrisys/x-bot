@@ -89,7 +89,7 @@ def _select_trend(config) -> Trend | None:
     """Pull trends from configured sources and pick one. Best-effort."""
     try:
         trends = gather_trends(
-            subreddits=config.trend_subreddits,
+            rss_feeds=config.trend_rss_feeds,
             include_hn=config.trend_include_hn,
             include_crypto=config.trend_include_crypto,
         )

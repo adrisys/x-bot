@@ -28,11 +28,15 @@ data:
   # Set to "true" to log tweets without posting them
   DRY_RUN: "false"
 
-  # Trend-driven posting (free sources: Reddit / HN / CoinGecko, no API keys)
+  # Trend-driven posting (free sources: RSS / HN / CoinGecko, no API keys).
   USE_TRENDS: "true"
-  TREND_SUBREDDITS: "CryptoCurrency,Bitcoin,cardano,argentina,espana,Austrian_Economics"
+  # RSS feeds as comma-separated label|url pairs. Google News search feeds cover
+  # the Spanish-language angles (Milei/Argentina, España); Mises and
+  # Cointelegraph cover Austrian economics and crypto. Each label is its own
+  # source family, so airtime stays balanced across feeds.
+  TREND_RSS_FEEDS: "google-news-ar|https://news.google.com/rss/search?q=Milei&hl=es-419&gl=AR&ceid=AR:es-419,google-news-es|https://news.google.com/rss/search?q=Espa%C3%B1a&hl=es&gl=ES&ceid=ES:es,mises|https://mises.org/rss.xml,cointelegraph|https://cointelegraph.com/rss"
   TREND_INCLUDE_HN: "true"
   TREND_INCLUDE_CRYPTO: "true"
-  # Minimum score (Reddit upvotes / HN points / CoinGecko derived score) to qualify;
-  # if nothing qualifies the bot falls back to the static TOPICS list.
+  # Minimum score (RSS feed-position score / HN points / CoinGecko derived score)
+  # to qualify; if nothing qualifies the bot falls back to the static TOPICS list.
   TREND_MIN_SCORE: "50"

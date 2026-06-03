@@ -1,7 +1,7 @@
 """Aggregate trending topics from free, public sources.
 
 No API keys required. Sources:
-  - Reddit JSON endpoints (per-subreddit `hot.json`)
+  - RSS feeds (Google News, Mises, Cointelegraph, …) via `<item><title>`
   - Hacker News Firebase API (`topstories.json`)
   - CoinGecko `/search/trending`
 
@@ -15,17 +15,25 @@ import os
 import random
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# Reddit blocks generic/bot-like User-Agents (HTTP 403). It requires a
-# descriptive, unique UA in the form `platform:appid:version (by /u/username)`.
-# Override REDDIT_USER_AGENT in the environment to set the real account handle.
+# Descriptive User-Agent applied to all outbound trend fetches. A generic/bot
+# UA gets some providers to block with HTTP 403, so we send a descriptive one.
+# Override HTTP_USER_AGENT in the environment to change it.
 _USER_AGENT = os.environ.get(
-    "REDDIT_USER_AGENT", "python:com.adrilab.x-bot:1.1 (by /u/x-bot)"
+    "HTTP_USER_AGENT", "python:com.adrilab.x-bot:1.1 (by /u/x-bot)"
 )
 _TIMEOUT_SEC = 10
+
+# RSS items carry no popularity score, so rank them by feed position: the first
+# item scores _RSS_TOP_SCORE and each subsequent item drops by _RSS_SCORE_STEP
+# (floored at 1). This keeps every feed above a typical min_score while letting
+# the family-balancing in pick_trend treat each feed as its own source.
+_RSS_TOP_SCORE = 100
+_RSS_SCORE_STEP = 5
 
 
 @dataclass(frozen=True)
@@ -38,44 +46,61 @@ class Trend:
     url: str | None = None
 
 
-def _fetch_json(url: str) -> dict | list | None:
-    """GET a URL and parse JSON. Returns None on any failure."""
+def _fetch_bytes(url: str) -> bytes | None:
+    """GET a URL and return the raw response body. Returns None on any failure."""
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT_SEC) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return response.read()
     except urllib.error.HTTPError as exc:
         # Rate limiting / anti-bot blocks are expected and best-effort; log a
         # one-line warning without a stack trace to avoid flooding the logs.
         logger.warning("Fetch blocked (HTTP %s) for %s", exc.code, url)
         return None
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+    except (urllib.error.URLError, TimeoutError):
         logger.exception("Failed to fetch %s", url)
         return None
 
 
-def fetch_reddit(subreddit: str, limit: int = 10) -> list[Trend]:
-    """Fetch hot posts from a subreddit."""
-    url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={limit}"
-    data = _fetch_json(url)
-    if not isinstance(data, dict):
+def _fetch_json(url: str) -> dict | list | None:
+    """GET a URL and parse JSON. Returns None on any failure."""
+    body = _fetch_bytes(url)
+    if body is None:
+        return None
+    try:
+        return json.loads(body.decode("utf-8"))
+    except json.JSONDecodeError:
+        logger.exception("Failed to parse JSON from %s", url)
+        return None
+
+
+def fetch_rss(label: str, url: str, limit: int = 10) -> list[Trend]:
+    """Fetch item titles from an RSS feed, scored by feed position."""
+    body = _fetch_bytes(url)
+    if body is None:
+        return []
+
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        logger.exception("Failed to parse RSS from %s", url)
         return []
 
     trends: list[Trend] = []
-    for child in data.get("data", {}).get("children", []):
-        post = child.get("data", {})
-        if post.get("stickied") or post.get("over_18"):
-            continue
-        title = (post.get("title") or "").strip()
+    for index, item in enumerate(root.iter("item")):
+        if index >= limit:
+            break
+        title = (item.findtext("title") or "").strip()
         if not title:
             continue
-        permalink = post.get("permalink") or ""
+        link = (item.findtext("link") or "").strip()
+        score = max(1, _RSS_TOP_SCORE - index * _RSS_SCORE_STEP)
         trends.append(
             Trend(
                 title=title,
-                source=f"reddit/r/{subreddit}",
-                score=int(post.get("score", 0)),
-                url=f"https://reddit.com{permalink}" if permalink else None,
+                source=f"rss/{label}",
+                score=score,
+                url=link or None,
             )
         )
     return trends
@@ -136,7 +161,7 @@ def fetch_coingecko_trending() -> list[Trend]:
 
 
 def gather_trends(
-    subreddits: list[str],
+    rss_feeds: list[tuple[str, str]],
     include_hn: bool = True,
     include_crypto: bool = True,
     per_source_limit: int = 10,
@@ -144,8 +169,8 @@ def gather_trends(
     """Pull from all configured sources and return a deduplicated flat list."""
     all_trends: list[Trend] = []
 
-    for subreddit in subreddits:
-        all_trends.extend(fetch_reddit(subreddit, limit=per_source_limit))
+    for label, url in rss_feeds:
+        all_trends.extend(fetch_rss(label, url, limit=per_source_limit))
 
     if include_hn:
         all_trends.extend(fetch_hackernews(limit=per_source_limit))
@@ -168,11 +193,12 @@ def pick_trend(trends: list[Trend], min_score: int = 0) -> Trend | None:
     """Pick a trend, balancing fairly across sources.
 
     Scores are not comparable across sources (CoinGecko derives scores in the
-    thousands while Reddit/HN report raw upvotes/points), so weighting purely by
-    score lets one source dominate every selection. Instead we pick a source
-    family uniformly at random, then a trend within it weighted by score. This
-    gives Reddit, Hacker News, and CoinGecko an equal shot regardless of their
-    score magnitude, which keeps the posted content varied.
+    thousands while HN reports raw points and RSS items are scored by feed
+    position), so weighting purely by score lets one source dominate every
+    selection. Instead we pick a source family uniformly at random, then a trend
+    within it weighted by score. This gives each RSS feed, Hacker News, and
+    CoinGecko an equal shot regardless of their score magnitude, which keeps the
+    posted content varied.
     """
     candidates = [t for t in trends if t.score >= min_score]
     if not candidates:
@@ -180,8 +206,9 @@ def pick_trend(trends: list[Trend], min_score: int = 0) -> Trend | None:
 
     by_family: dict[str, list[Trend]] = {}
     for trend in candidates:
-        family = trend.source.split("/", 1)[0]  # "reddit/r/Bitcoin" -> "reddit"
-        by_family.setdefault(family, []).append(trend)
+        # Each source string is its own family ("rss/google-news-ar",
+        # "hackernews", "coingecko"), so every feed gets equal airtime.
+        by_family.setdefault(trend.source, []).append(trend)
 
     family = random.choice(list(by_family.keys()))
     group = by_family[family]

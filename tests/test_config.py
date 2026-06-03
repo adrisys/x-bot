@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from bot.config import _parse_list, load_config
+from bot.config import _parse_feeds, _parse_list, load_config
 
 
 class ParseListTests(unittest.TestCase):
@@ -19,6 +19,26 @@ class ParseListTests(unittest.TestCase):
 
     def test_empty_string(self) -> None:
         assert _parse_list("") == []
+
+
+class ParseFeedsTests(unittest.TestCase):
+    def test_parses_label_url_pairs(self) -> None:
+        assert _parse_feeds("ar|https://a,es|https://b") == [
+            ("ar", "https://a"),
+            ("es", "https://b"),
+        ]
+
+    def test_strips_whitespace(self) -> None:
+        assert _parse_feeds(" ar | https://a ") == [("ar", "https://a")]
+
+    def test_skips_entries_without_separator(self) -> None:
+        assert _parse_feeds("ar|https://a,bogus,es|https://b") == [
+            ("ar", "https://a"),
+            ("es", "https://b"),
+        ]
+
+    def test_empty_string(self) -> None:
+        assert _parse_feeds("") == []
 
 
 _REQUIRED_ENV = {
@@ -60,8 +80,9 @@ class TrendConfigTests(unittest.TestCase):
         assert config.trend_include_hn is True
         assert config.trend_include_crypto is True
         assert config.trend_min_score == 50
-        assert "Bitcoin" in config.trend_subreddits
-        assert "argentina" in config.trend_subreddits
+        labels = [label for label, _ in config.trend_rss_feeds]
+        assert "google-news-ar" in labels
+        assert "cointelegraph" in labels
 
     @patch.dict(os.environ, {**_REQUIRED_ENV, "USE_TRENDS": "true"}, clear=True)
     def test_use_trends_enabled(self) -> None:
@@ -73,11 +94,14 @@ class TrendConfigTests(unittest.TestCase):
 
     @patch.dict(
         os.environ,
-        {**_REQUIRED_ENV, "TREND_SUBREDDITS": "rust, golang , python"},
+        {**_REQUIRED_ENV, "TREND_RSS_FEEDS": "rust|https://r,go|https://g"},
         clear=True,
     )
-    def test_trend_subreddits_override(self) -> None:
-        assert load_config().trend_subreddits == ["rust", "golang", "python"]
+    def test_trend_rss_feeds_override(self) -> None:
+        assert load_config().trend_rss_feeds == [
+            ("rust", "https://r"),
+            ("go", "https://g"),
+        ]
 
     @patch.dict(os.environ, {**_REQUIRED_ENV, "TREND_MIN_SCORE": "250"}, clear=True)
     def test_trend_min_score_override(self) -> None:
