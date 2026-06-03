@@ -22,6 +22,18 @@ _HEARTBEAT = Path("/tmp/x-bot-alive")
 _MAX_ATTEMPTS = 2
 _RETRY_DELAY = 30
 
+# Rotating "angles" so the bot doesn't post the same contrarian reframe every
+# time. One is chosen at random per tweet to keep the timeline varied in tone.
+_ANGLES = (
+    "a sharp contrarian take that challenges the consensus",
+    "a genuinely curious question that makes people stop and think",
+    "a concrete, falsifiable prediction",
+    "a witty, irreverent one-liner",
+    "an unexpected analogy or first-principles reframe",
+    "a practical observation or lesson learned",
+    "an optimistic angle on why this matters",
+)
+
 
 def _handle_signal(signum: int, _frame: object) -> None:
     logger.info("Received signal %d, shutting down", signum)
@@ -34,17 +46,20 @@ def _touch_heartbeat() -> None:
 
 
 def _build_prompt(topic: str, trend: Trend | None = None) -> str:
+    angle = random.choice(_ANGLES)
+
     if trend is not None:
         subject = (
             f"this trending item from {trend.source}: \"{trend.title}\"\n"
-            f"Write a sharp take that reacts to it specifically — not generic commentary."
+            f"React to it specifically — not generic commentary."
         )
     else:
         subject = f"the topic: {topic}"
 
     return (
         f"Write an original tweet about {subject}\n\n"
-        f"It should be a sharp, standalone take — the kind that gets quoted and shared. "
+        f"Approach it as {angle}. "
+        f"It should be a standalone take — the kind that gets quoted and shared. "
         f"Max 280 characters. Only output the tweet text, nothing else. "
         f"No hashtags unless absolutely natural. No emojis unless truly fitting. "
         f"Choose one language for the entire tweet — Spanish if the subject is Spanish-language, "

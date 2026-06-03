@@ -11,6 +11,7 @@ the caller can fall back to a static topic list.
 
 import json
 import logging
+import os
 import random
 import urllib.error
 import urllib.request
@@ -18,7 +19,12 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-_USER_AGENT = "x-bot/1.0 (+https://github.com/adriannavarro/x-bot)"
+# Reddit blocks generic/bot-like User-Agents (HTTP 403). It requires a
+# descriptive, unique UA in the form `platform:appid:version (by /u/username)`.
+# Override REDDIT_USER_AGENT in the environment to set the real account handle.
+_USER_AGENT = os.environ.get(
+    "REDDIT_USER_AGENT", "python:com.adrilab.x-bot:1.1 (by /u/adrilab)"
+)
 _TIMEOUT_SEC = 10
 
 
@@ -38,6 +44,11 @@ def _fetch_json(url: str) -> dict | list | None:
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT_SEC) as response:
             return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        # Rate limiting / anti-bot blocks are expected and best-effort; log a
+        # one-line warning without a stack trace to avoid flooding the logs.
+        logger.warning("Fetch blocked (HTTP %s) for %s", exc.code, url)
+        return None
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
         logger.exception("Failed to fetch %s", url)
         return None
@@ -154,10 +165,25 @@ def gather_trends(
 
 
 def pick_trend(trends: list[Trend], min_score: int = 0) -> Trend | None:
-    """Pick a trend, weighted by score. Returns None if no candidates qualify."""
+    """Pick a trend, balancing fairly across sources.
+
+    Scores are not comparable across sources (CoinGecko derives scores in the
+    thousands while Reddit/HN report raw upvotes/points), so weighting purely by
+    score lets one source dominate every selection. Instead we pick a source
+    family uniformly at random, then a trend within it weighted by score. This
+    gives Reddit, Hacker News, and CoinGecko an equal shot regardless of their
+    score magnitude, which keeps the posted content varied.
+    """
     candidates = [t for t in trends if t.score >= min_score]
     if not candidates:
         return None
 
-    weights = [max(1, t.score) for t in candidates]
-    return random.choices(candidates, weights=weights, k=1)[0]
+    by_family: dict[str, list[Trend]] = {}
+    for trend in candidates:
+        family = trend.source.split("/", 1)[0]  # "reddit/r/Bitcoin" -> "reddit"
+        by_family.setdefault(family, []).append(trend)
+
+    family = random.choice(list(by_family.keys()))
+    group = by_family[family]
+    weights = [max(1, t.score) for t in group]
+    return random.choices(group, weights=weights, k=1)[0]

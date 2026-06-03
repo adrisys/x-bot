@@ -2,8 +2,6 @@
 
 import logging
 
-import tweepy
-
 from bot.config import Config
 
 logger = logging.getLogger(__name__)
@@ -11,6 +9,8 @@ logger = logging.getLogger(__name__)
 
 class XClient:
     def __init__(self, config: Config) -> None:
+        import tweepy
+
         self._client = tweepy.Client(
             consumer_key=config.x_consumer_key,
             consumer_secret=config.x_consumer_secret,
